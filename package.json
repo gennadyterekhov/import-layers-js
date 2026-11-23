@@ -1,0 +1,23 @@
+{
+  "name": "import-layers-js",
+  "version": "0.1.0",
+  "description": "Check dependency direction between JavaScript project layers",
+  "type": "module",
+  "exports": "./src/index.js",
+  "bin": {
+    "import-layers-js": "./bin/import-layers-js.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": "^20.12 || ^22 || >=24"
+  },
+  "dependencies": {
+    "dependency-cruiser": "17.4.3"
+  }
+}

@@ -18,6 +18,8 @@
     "node": "^20.12 || ^22 || >=24"
   },
   "dependencies": {
-    "dependency-cruiser": "17.4.3"
+    "dependency-cruiser": "17.4.3",
+    "typescript": "5.9.3",
+    "yaml": "2.9.0"
   }
 }

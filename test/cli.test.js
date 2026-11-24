@@ -79,7 +79,7 @@ test('resolves workspace package exports and uses root-relative layer paths', as
     const result = run(root, 'packages/high');
     assert.equal(result.status, 1, result.stderr);
     assert.equal(result.stdout, '');
-    assert.match(result.stderr, /packages\/high\/index\.js -> packages\/low\/src\/service\.mjs/);
+    assert.match(result.stderr, /packages\/high\/index\.js:1 -> packages\/low\/src\/service\.mjs/);
 });
 
 test('reports unresolved imports without printing OK', async (t) => {
@@ -90,7 +90,7 @@ test('reports unresolved imports without printing OK', async (t) => {
     });
 
     const result = run(root);
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 2, result.stderr);
     assert.equal(result.stdout, '');
     assert.match(result.stderr, /src\/highish\/index\.js.*unresolved import.*\.\/missing\.js/);
 });
@@ -118,7 +118,7 @@ test('prints the paths of checked files with debug enabled', async (t) => {
 
     const result = run(root, 'src/low/index.js');
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, 'src/high/example.js\nsrc/low/index.js\nOK\n');
+    assert.equal(result.stdout, 'processing file src/high/example.js\nprocessing file src/low/index.js\nOK\n');
     assert.equal(result.stderr, '');
 });
 
@@ -151,7 +151,7 @@ test('resolves a JavaScript alias before applying the layer rule', async (t) => 
     const result = run(root);
     assert.equal(result.status, 1, result.stderr);
     assert.equal(result.stdout, '');
-    assert.match(result.stderr, /src\/high\/index\.js -> src\/low\/service\.js/);
+    assert.match(result.stderr, /src\/high\/index\.js:1 -> src\/low\/service\.js/);
 });
 
 test('excludes symlinked directories outside the project from the graph', async (t) => {
@@ -167,4 +167,68 @@ test('excludes symlinked directories outside the project from the graph', async 
         nodes: ['src/high/index.js'],
         edges: [],
     });
+});
+
+test('discovers YAML config from a subdirectory and adds debug paths to stderr in graph mode', async (t) => {
+    const root = await makeProject(t, {
+        'import_layers.yml': 'layers: [high, low]\ndebug: true\n',
+        'src/low/main.js': 'import "../high/target.js";',
+        'src/high/target.js': 'export default 42;',
+        'src/high/unselected.js': 'export default 1;',
+    });
+
+    const result = run(join(root, 'src'), '--graph', 'low/main.js');
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {
+        nodes: ['src/high/target.js', 'src/low/main.js'],
+        edges: [{ from: 'src/low/main.js', to: 'src/high/target.js' }],
+    });
+    assert.equal(result.stderr, 'processing file src/high/target.js\nprocessing file src/low/main.js\n');
+});
+
+test('reads an explicit config, honors rootDir, and skips test and generated files', async (t) => {
+    const root = await makeProject(t, {
+        'settings/layers.yaml': 'layers: [high, low]\nrootDir: src\nignore_tests: true\n',
+        'src/high/main.js': 'export default 42;',
+        'src/high/main.test.js': 'import "../low/target.js";',
+        'src/high/__tests__/helper.js': 'import "../../low/target.js";',
+        'src/low/target.js': 'export default 42;',
+        'src/.nuxt/generated.js': 'import "./missing.js";',
+        'other/unused.js': 'import "./missing.js";',
+    });
+
+    const result = run(root, '--config', 'settings/layers.yaml', '--graph', 'other');
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {
+        nodes: ['src/high/main.js', 'src/low/target.js'],
+        edges: [],
+    });
+    assert.equal(result.stderr, '');
+});
+
+test('reports invalid source syntax alongside import violations', async (t) => {
+    const root = await makeProject(t, {
+        'import_layers.json': '{"layers":["high","low"]}',
+        'src/high/broken.js': '\nconst = ;',
+        'src/high/main.js': '\n\nrequire("../low/target.cjs");',
+        'src/low/target.cjs': 'module.exports = 42;',
+    });
+
+    const result = run(root);
+    assert.equal(result.status, 2, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /src\/high\/broken\.js:2:/);
+    assert.match(result.stderr, /src\/high\/main\.js:3 -> src\/low\/target\.cjs/);
+});
+
+test('checks type-only imports in a project with no installed TypeScript compiler', async (t) => {
+    const root = await makeProject(t, {
+        'import_layers.json': '{"layers":["high","low"]}',
+        'src/high/main.ts': '\nimport type { Item } from "../low/model";',
+        'src/low/model.ts': 'export interface Item { id: string }',
+    });
+
+    const result = run(root);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /src\/high\/main\.ts:2 -> src\/low\/model\.ts/);
 });

@@ -8,18 +8,16 @@ function sourceLocation(file, line) {
     return line === undefined ? file : `${file}:${line}`;
 }
 
-function reportResult({ graph, violations, unresolved, errors }, showGraph) {
+function reportResult({ graph, pipelineViolations, unresolved, errors }, showGraph) {
     for (const error of errors) console.error(error);
-    for (const { from, to, fromLayer, toLayer, line } of violations) {
-        console.error(`${sourceLocation(from, line)} -> ${to}: cannot import package from lower layer (${fromLayer} -> ${toLayer})`);
-    }
+    for (const violation of pipelineViolations) console.error(violation);
     for (const { from, specifier, line } of unresolved) {
         console.error(`${sourceLocation(from, line)}: unresolved import ${JSON.stringify(specifier)}`);
     }
 
     if (showGraph) console.log(JSON.stringify(graph, null, 2));
     if (errors.length || unresolved.length) return 2;
-    if (violations.length) return 1;
+    if (pipelineViolations.length) return 1;
     if (!showGraph) console.log('OK');
     return 0;
 }
@@ -53,6 +51,7 @@ async function main() {
     const printDebug = values.graph ? console.error : console.log;
     const result = await analyzeProject({
         root,
+        usePipeline: true,
         configPath,
         paths: positionals.length ? positionals.map((path) => resolve(cwd, path)) : ['.'],
         onFile: (file) => printDebug(`processing file ${file}`),

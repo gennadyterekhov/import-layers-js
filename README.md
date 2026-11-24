@@ -10,12 +10,13 @@ Requires Node.js 20 (20.12 or newer), 22, or 24+.
 npm install --save-dev --install-links /path/to/import-layers-js
 ```
 
-Create `import_layers.json` in the project root.
+Create `import_layers.json`, `import_layers.yaml`, or `import_layers.yml` in the project root. The CLI searches upward from the current directory and prefers JSON when multiple configs exist in the same directory.
 
 ```json
 {
   "layers": ["high", "low"],
-  "debug": false
+  "debug": false,
+  "ignoreTests": false
 }
 ```
 
@@ -28,13 +29,16 @@ Run from the project root.
 ```sh
 npx import-layers-js
 npx import-layers-js src packages
+npx import-layers-js -c config/layers.yml --graph src
 ```
 
-Without path arguments, the CLI starts from all scannable files under the project root, including files with no imports. Path arguments select the starting files or directories. Imports can still lead to other files inside the project.
+Without path arguments, the CLI starts from all scannable files under the project root, including files with no imports. Positional paths and `-c` (or `--config`) are relative to the current directory. Optional `rootDir` selects a directory relative to the project root and takes precedence over positional paths. Imports can still lead to other files inside the project.
 
-If there are no layer violations or unresolved imports, the CLI prints `OK` to stdout. Set the optional boolean `debug` to `true` to also print the project-relative path of each checked file to stdout. It defaults to `false`.
+Set `ignoreTests` to `true` to skip `*.test.*`, `*.spec.*`, and files in `test`, `tests`, and `__tests__` directories. `ignore_tests` is accepted as a fallback. The scan also skips dependency directories and common generated output such as `.nuxt`, `.next`, and top-level `dist` and `build`.
 
-Layer violations and unresolved import warnings go to stderr. Exit codes are `0` when there are no layer violations, `1` when a layer violation is found, and `2` when the command or analysis fails.
+The CLI prints `OK` on success. Layer violations, unresolved imports, and JavaScript or TypeScript syntax errors go to stderr. Exit codes are `0` for success, `1` for layer violations, and `2` for invalid arguments, invalid configuration, or analysis errors. Line numbers are included for imports in JavaScript and TypeScript source. `debug: true` logs each checked file to stdout, or to stderr when `--graph` is used.
+
+`--graph` writes the internal dependency graph as JSON to stdout in place of `OK`. Diagnostics and exit codes still apply.
 
 The analyzer handles ES imports, re-exports, CommonJS `require()`, and dynamic `import()` with statically known targets. It uses the root `tsconfig.json` or `jsconfig.json`, in that order, to resolve aliases. Node.js `import` and `require` package export conditions are enabled in the same resolution pass, so dual-mode packages can resolve differently at runtime. Runtime-computed imports and virtual modules created by bundler plugins can leave gaps in the graph.
 
@@ -43,13 +47,13 @@ The analyzer handles ES imports, re-exports, CommonJS `require()`, and dynamic `
 ```js
 import { analyzeProject } from 'import-layers-js';
 
-const { graph, violations, unresolved } = await analyzeProject({
+const { graph, violations, unresolved, errors } = await analyzeProject({
     root: '/path/to/project',
     paths: ['src'],
 });
 ```
 
-`root` defaults to the current working directory and `paths` defaults to the whole project.
+`root` defaults to the current working directory and `paths` defaults to the whole project. Supply `configPath` to select another config relative to `root`. `errors` lists syntax diagnostics.
 
 The graph contains a `nodes` array of project-relative file paths and an `edges` array of `{ "from": "...", "to": "..." }` objects. It omits installed third-party packages, Node.js built-ins, and files outside the project. Installed workspace links that resolve to files inside the project are included.
 
@@ -61,3 +65,4 @@ Run `npm ci` and `npm test` from this package directory.
 
 - [import-layers-go](https://github.com/gennadyterekhov/import-layers-go)
 - [import-layers-php](https://github.com/gennadyterekhov/import-layers-php)
+- [import-layers-py](https://github.com/gennadyterekhov/import-layers-py)

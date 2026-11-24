@@ -13,15 +13,18 @@ function projectPath(root, path) {
     return relativePath;
 }
 
-async function readLayers(root) {
+async function readConfig(root) {
     try {
-        const { layers } = JSON.parse(await readFile(join(root, 'import_layers.json'), 'utf8'));
+        const { layers, debug = false } = JSON.parse(await readFile(join(root, 'import_layers.json'), 'utf8'));
         if (!Array.isArray(layers) || layers.length === 0 ||
             layers.some((layer) => typeof layer !== 'string' || !layer.trim()) ||
             new Set(layers).size !== layers.length) {
             throw new Error('layers must be a non-empty array of unique directory names or paths');
         }
-        return layers;
+        if (typeof debug !== 'boolean') {
+            throw new Error('debug must be a boolean');
+        }
+        return { layers, debug };
     } catch (error) {
         throw new Error(`import_layers.json: ${error.message}`, { cause: error });
     }
@@ -47,10 +50,10 @@ async function findJsConfig(root) {
     }
 }
 
-export async function analyzeProject({ root = process.cwd(), paths = ['.'] } = {}) {
+export async function analyzeProject({ root = process.cwd(), paths = ['.'], onFile } = {}) {
     const requestedRoot = resolve(root);
     root = await realpath(requestedRoot);
-    const layers = await readLayers(root);
+    const { layers, debug } = await readConfig(root);
     const entries = paths.map((path) => {
         const entry = projectPath(requestedRoot, path);
         if (entry === null || projectPath(root, realpathSync(resolve(root, entry))) === null) {
@@ -90,6 +93,7 @@ export async function analyzeProject({ root = process.cwd(), paths = ['.'] } = {
     const unresolved = [];
 
     for (const from of nodes) {
+        if (debug) onFile?.(from);
         const fromIndex = layerByNode.get(from);
         const targets = new Set();
         const missing = new Set();

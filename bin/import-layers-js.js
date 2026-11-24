@@ -16,13 +16,14 @@ async function main() {
     const { values, positionals } = parseArgs({
         allowPositionals: true,
         options: {
+            // Accept the former graph format flag for existing CLI invocations.
             format: { type: 'string', default: 'text' },
             help: { type: 'boolean', short: 'h' },
         },
     });
 
     if (values.help) {
-        console.log('Usage: import-layers-js [--format text|json] [path ...]');
+        console.log('Usage: import-layers-js [path ...]');
         console.log('Run from the directory containing import_layers.json. Paths default to the project root.');
         return;
     }
@@ -30,14 +31,10 @@ async function main() {
         throw new Error('--format must be text or json');
     }
 
-    const { graph, violations, unresolved } = await analyzeProject({
+    const { violations, unresolved } = await analyzeProject({
         paths: positionals.length ? positionals : ['.'],
+        onFile: (file) => console.log(file),
     });
-    if (values.format === 'json') {
-        console.log(JSON.stringify(graph, null, 2));
-    } else {
-        printTextGraph(graph);
-    }
 
     for (const { from, to, fromLayer, toLayer } of violations) {
         console.error(`${from} -> ${to}: cannot import package from lower layer (${fromLayer} -> ${toLayer})`);
@@ -45,6 +42,7 @@ async function main() {
     for (const { from, specifier } of unresolved) {
         console.error(`${from}: unresolved import ${JSON.stringify(specifier)}`);
     }
+    if (!violations.length && !unresolved.length) console.log('OK');
     if (violations.length) process.exitCode = 1;
 }
 

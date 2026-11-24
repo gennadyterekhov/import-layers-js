@@ -1,6 +1,6 @@
 # import-layers-js
 
-Checks the direction of imports between layers and prints the project's internal dependency graph. It uses dependency-cruiser to find and resolve imports.
+Checks the direction of imports between layers. It uses dependency-cruiser to find and resolve imports.
 
 ## Use from another project
 
@@ -14,7 +14,8 @@ Create `import_layers.json` in the project root.
 
 ```json
 {
-  "layers": ["high", "low"]
+  "layers": ["high", "low"],
+  "debug": false
 }
 ```
 
@@ -26,13 +27,12 @@ Run from the project root.
 
 ```sh
 npx import-layers-js
-npx import-layers-js --format json > graph.json
-npx import-layers-js --format json src packages
+npx import-layers-js src packages
 ```
 
 Without path arguments, the CLI starts from all scannable files under the project root, including files with no imports. Path arguments select the starting files or directories. Imports can still lead to other files inside the project.
 
-The default text output lists each file and its direct dependencies. JSON contains a `nodes` array of project-relative file paths and an `edges` array of `{ "from": "...", "to": "..." }` objects. Both formats go to stdout. The graph omits installed third-party packages, Node.js built-ins, and files outside the project. Installed workspace links that resolve to files inside the project are included.
+If there are no layer violations or unresolved imports, the CLI prints `OK` to stdout. Set the optional boolean `debug` to `true` to also print the project-relative path of each checked file to stdout. It defaults to `false`.
 
 Layer violations and unresolved import warnings go to stderr. Exit codes are `0` when there are no layer violations, `1` when a layer violation is found, and `2` when the command or analysis fails.
 
@@ -50,6 +50,8 @@ const { graph, violations, unresolved } = await analyzeProject({
 ```
 
 `root` defaults to the current working directory and `paths` defaults to the whole project.
+
+The graph contains a `nodes` array of project-relative file paths and an `edges` array of `{ "from": "...", "to": "..." }` objects. It omits installed third-party packages, Node.js built-ins, and files outside the project. Installed workspace links that resolve to files inside the project are included.
 
 ## Development
 

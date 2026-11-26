@@ -12,7 +12,19 @@ function isExecutable(path) {
     }
 }
 
-export async function checkGraph(project, result) {
+export function parseProject(project, files) {
+    return runPipeline('--parse-project', {
+        language: 'js', interpreter: process.execPath, root: project.root, files,
+    });
+}
+
+export function checkGraph(project, result, trees) {
+    return runPipeline('--project', {
+        language: 'js', layers: project.config.layers, trees, references: result.references,
+    });
+}
+
+function runPipeline(mode, request) {
     const checkout = fileURLToPath(new URL('../../../', import.meta.url));
     const directory = process.env.IMPORT_LAYERS_TOOLS;
     const installed = directory
@@ -21,19 +33,12 @@ export async function checkGraph(project, result) {
     const local = existsSync(join(checkout, 'degra', 'go.mod'));
     const command = installed ?? (local ? 'go' : 'degra');
     const args = installed || !local ? [] : ['-C', join(checkout, 'degra'), 'run', '.'];
-    const child = spawn(command, [...args, '--project', local ? checkout : '']);
+    const child = spawn(command, [...args, mode, local ? checkout : '']);
     const stdout = [];
     const stderr = [];
     child.stdout.on('data', chunk => stdout.push(chunk));
     child.stderr.on('data', chunk => stderr.push(chunk));
-    const payload = JSON.stringify({
-        language: 'js',
-        interpreter: process.execPath,
-        root: project.root,
-        layers: project.config.layers,
-        files: result.files,
-        references: result.references,
-    });
+    const payload = JSON.stringify(request);
     return new Promise((resolve, reject) => {
         child.on('error', reject);
         child.stdin.on('error', reject);

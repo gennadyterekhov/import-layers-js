@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
+
+export const sourceFile = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 
 function importSpecifier(node) {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return node.moduleSpecifier;
@@ -7,30 +8,47 @@ function importSpecifier(node) {
     if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) return node.argument.literal;
     if (ts.isCallExpression(node)) {
         const { expression } = node;
-        if (expression.kind === ts.SyntaxKind.ImportKeyword ||
-            (ts.isIdentifier(expression) && expression.text === 'require')) {
+        if (expression?.kind === ts.SyntaxKind.ImportKeyword ||
+            (expression && ts.isIdentifier(expression) && expression.escapedText === 'require')) {
             return node.arguments[0];
         }
     }
 }
 
-export async function inspectSource(path) {
+export function inspectSource(tree) {
     const lines = new Map();
-    if (!/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) return { lines, diagnostics: [] };
+    const specifiers = new Set();
+    if (!tree) return { lines, specifiers };
 
-    const file = ts.createSourceFile(path, await readFile(path, 'utf8'), ts.ScriptTarget.Latest);
-    const diagnostics = file.parseDiagnostics.map(({ start, messageText }) => ({
-        line: file.getLineAndCharacterOfPosition(start ?? 0).line + 1,
-        message: ts.flattenDiagnosticMessageText(messageText, ' '),
-    }));
-
+    const lineStarts = ts.computeLineStarts(tree.text);
+    function add(specifier, position, located = true) {
+        specifiers.add(specifier);
+        if (located && !lines.has(specifier)) {
+            const { line } = ts.computeLineAndCharacterOfPosition(lineStarts, position);
+            lines.set(specifier, line + 1);
+        }
+    }
     function visit(node) {
         const specifier = importSpecifier(node);
-        if (specifier && ts.isStringLiteralLike(specifier) && !lines.has(specifier.text)) {
-            lines.set(specifier.text, file.getLineAndCharacterOfPosition(specifier.getStart(file)).line + 1);
+        if (specifier && ts.isStringLiteralLike(specifier)) {
+            add(specifier.text, ts.skipTrivia(tree.text, specifier.pos));
+        } else if (ts.isCallExpression(node)) {
+            const { expression, arguments: args } = node;
+            if (expression && ts.isIdentifier(expression) && ['define', 'require'].includes(expression.escapedText)) {
+                const dependencies = args.find(ts.isArrayLiteralExpression);
+                for (const item of dependencies?.elements ?? []) {
+                    if (ts.isStringLiteralLike(item) && !['require', 'exports', 'module'].includes(item.text)) {
+                        add(item.text, item.pos, false);
+                    }
+                }
+            }
         }
         ts.forEachChild(node, visit);
     }
-    visit(file);
-    return { lines, diagnostics };
+    visit(tree);
+    for (const reference of tree.referencedFiles ?? []) {
+        const name = reference.fileName;
+        add(name.startsWith('.') || name.startsWith('/') ? name : './' + name, reference.pos, false);
+    }
+    return { lines, specifiers };
 }

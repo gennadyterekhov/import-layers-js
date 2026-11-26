@@ -13,20 +13,17 @@ function importLocations(imports, lines) {
     return { locations, syntaxByTarget };
 }
 
-export async function collectReferences(sources, inspectSource, onFile) {
+export function collectReferences(sources, diagnostics, onFile) {
     const nodes = [...sources.keys()].sort();
-    const files = [];
     const references = [];
     const unresolved = [];
     const errors = [];
 
     for (const from of nodes) {
         onFile?.(from);
-        const { lines, diagnostics } = await inspectSource(from);
-        if (!diagnostics.length && /\.(?:[cm]?[jt]s|[jt]sx)$/.test(from)) files.push(from);
-        for (const { line, message } of diagnostics) errors.push(`${from}:${line}: ${message}`);
-
+        errors.push(...(diagnostics[from] ?? []));
         const source = sources.get(from);
+        const { lines } = source;
         const { locations, syntaxByTarget } = importLocations(source.imports, lines);
         for (const to of [...locations.keys()].sort()) {
             const line = locations.get(to);
@@ -36,5 +33,5 @@ export async function collectReferences(sources, inspectSource, onFile) {
             unresolved.push({ from, specifier, line: lines.get(specifier) });
         }
     }
-    return { nodes, files, references, unresolved, errors };
+    return { nodes, references, unresolved, errors };
 }
